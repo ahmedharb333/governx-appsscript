@@ -23,7 +23,7 @@ const STAGE_EFFORT = {
   "stage_1_master"    : "high",    // Root cause analysis — high quality, respects 6-min Apps Script limit
   "stage_2_research"  : "high",    // Source identification — benefit from thinking
   "stage_3_script"    : "high",    // Script generation — high quality, respects 6-min Apps Script limit
-  "stage_4_scenes"    : "medium",  // Scene routing — structured, less open-ended
+  "stage_4_scenes"    : "low",     // Scene routing — structured (cut script into scene blocks). At "medium", adaptive thinking on a 26-30 scene Standard video ran past the 6-min Apps Script limit → timeout. Low thinking keeps the single call fast enough; 4B refines quality after.
   "stage_4_director"  : "medium",  // Director review — structured data fill; high-effort thinking eats the output budget and truncates many-scene videos (was falling through to "high")
   "stage_5_publishing": "low",     // Row creation — formatting task
   "stage_6_package"   : "low",     // Document export — formatting task
