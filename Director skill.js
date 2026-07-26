@@ -127,6 +127,15 @@ When TOOL = Remotion, you MUST output a REMOTION_DATA field using this exact pip
 
 IMPORTANT: In REMOTION_DATA, never use | inside a value. Use ;; to separate items in before_rows/after_rows. Use - instead of : inside label text.
 
+HERO-NUMBER RULE (mandatory): the big headline figure of a scene — the value= of
+data_callout / opening_hook / stat_poster, and the to= of counter_animation — MUST be
+a MAGNITUDE the sentence is actually about: a share (49%), a count (1.2B units), money
+($250B), a multiple (10x). It must NEVER be a bare calendar year (2007, 1998, 2013).
+A year is CONTEXT, not the statistic — put it in context=, in a Checkpoint, or in a
+Timeline node, never in the hero slot. "In 2007 Nokia led the smartphone market" →
+the hero number is the market SHARE (e.g. 49%), and 2007 goes in context=. A year slammed
+on screen as the giant number reads as "2,007" and contradicts the narration.
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 3. EMOTIONAL PACING & THE STOP-SCROLLING TEST
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
