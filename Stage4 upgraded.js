@@ -60,6 +60,12 @@ function generateScenes() {
     const validation = validateOutput("VISUAL", pass1Raw, idea.id, null);
     const proceed    = showValidationResult("VISUAL", validation, idea.id);
     if (!proceed) {
+      // Diagnostic: capture what Claude actually returned so a 0-scenes gate
+      // failure can be traced (empty vs truncated vs wrong-format).
+      const diag = "len=" + pass1Raw.length + " hasSCENE=" + /SCENE_\d+_START/.test(pass1Raw) +
+                   " | head: " + pass1Raw.slice(0, 280).replace(/\s+/g, " ") +
+                   " | tail: " + pass1Raw.slice(-160).replace(/\s+/g, " ");
+      logError("Stage 4 — Scenes", idea.id, "Gate raw-response", diag);
       logError("Stage 4 — Scenes", idea.id, "Quality Gate Failed", validation.failures.join(" | "));
       return;
     }

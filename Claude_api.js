@@ -75,8 +75,9 @@ function callClaude(finalPrompt, stageKey) {
       // Standard 16k is insufficient when the prompt itself consumes 6-8k tokens
       // — or when the output is large. The director review emits REMOTION_DATA for
       // EVERY scene; a 4-7 min video with ~20 scenes needs the bigger budget or the
-      // response truncates and zero scenes parse.
-      const stageMaxTokens = (stageKey === "stage_3_script" || stageKey === "stage_4_director") ? 32000 : 16000;
+      // response truncates and zero scenes parse. Stage 4 (scenes) has the SAME
+      // problem: adaptive thinking + 26-30 scene blocks overrun 16k → 0 scenes.
+      const stageMaxTokens = (stageKey === "stage_3_script" || stageKey === "stage_4_director" || stageKey === "stage_4_scenes") ? 32000 : 16000;
 
       const payload = {
         model      : ANTHROPIC_MODEL,
