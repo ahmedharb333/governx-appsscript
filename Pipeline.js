@@ -2129,6 +2129,14 @@ function speakNumbers_(text) {
   const ORD = { "1": "first", "2": "second", "3": "third", "4": "fourth" };
   let t = String(text || "");
 
+  // Strip thousands-separator commas from inside numbers FIRST, so nothing
+  // downstream (and no TTS engine) can misread them. ElevenLabs read "1,300-word"
+  // as "300-word" — the comma split the number. A comma sitting between digits that
+  // groups exactly three trailing digits is a thousands separator; "1,300"→"1300",
+  // "130,000"→"130000" (value unchanged, now pronounced correctly). A list comma
+  // ("1, 2, 3") has a space after it and is left alone.
+  t = t.replace(/\b\d{1,3}(?:,\d{3})+\b/g, function (m) { return m.replace(/,/g, ""); });
+
   // quarters: Q4 → "the fourth quarter"; Q4 2023 → "the fourth quarter of 2023"
   t = t.replace(/\bQ([1-4])(?:\s+(\d{4}))?\b/g,
     function (m, q, yr) { return "the " + ORD[q] + " quarter" + (yr ? " of " + yr : ""); });
