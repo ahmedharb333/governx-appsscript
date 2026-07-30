@@ -63,6 +63,7 @@ function buildResearchMenu() {
     .addItem("① Setup research tabs",            "setupResearchBridge")
     .addItem("①b Add research columns to Idea Catalogue", "addResearchColumnsToIdeaCatalogue")
     .addSeparator()
+    .addItem("🔎 Discover fetchable sources → col P (before ②)", "discoverSourcesForIdea")
     .addItem("② Run verified research…",         "runVerifiedResearch")
     .addItem("③ Approve ticked claims → Data Moments", "approveSelectedClaims")
     .addItem("④ Validate before render (blocks)", "validateBeforeRender")
@@ -191,6 +192,120 @@ function pingResearchEngine() {
     SpreadsheetApp.getUi().alert("❌ Cannot reach engine", e.message +
       "\n\nIs `npm start` running, and is ngrok pointed at port 3000?", SpreadsheetApp.getUi().ButtonSet.OK);
   }
+}
+
+
+/* ── 🔎 DISCOVER SOURCES — the step that fills Source_URLs (col P) ──────────────
+   The verify engine (②) can only FETCH URLs it is handed. It cannot FIND them.
+   That gap is why sourcing was manual every video, and why "No fetchable sources
+   yet" appears on a topic with no confirmed links — and why Research Database
+   column E (Source Link) ends up holding a "Search: …" placeholder instead of a
+   real link: Stage 2 had no document to fetch, so it wrote down the search.
+
+   This asks the engine (Claude web-search) to FIND primary, readable sources for
+   the selected idea, AUTO-TESTS each with the SAME fetchDocument() ② uses, and
+   writes only the reachable ones into Source_URLs (col P). Then ② has real
+   documents to verify and column E fills with real links.
+
+   It never invents evidence — it finds and filters URLs. All verification still
+   happens in ②.
+   ---------------------------------------------------------------------------- */
+function discoverSourcesForIdea() {
+  const ui = SpreadsheetApp.getUi();
+
+  const idea = rbActiveIdea_();
+  if (!idea) return;
+  rbEnsureIdeaColumns_(SpreadsheetApp.getActiveSpreadsheet());
+
+  const company = String(idea.company || "").trim();
+  // Brief ← whatever ② would use: the typed col-O brief, else the auto brief.
+  let brief = String(idea.sheet.getRange(idea.row, COL_RB_IDEA.BRIEF).getValue()).trim();
+  if (!brief) { try { brief = rbAutoBrief_(idea); } catch (e) {} }
+  if (!company && !brief) { ui.alert("This idea has no company or brief to search on."); return; }
+
+  ui.alert("🔎 Discovering sources — " + idea.id,
+    "Searching the web for primary, readable sources for:\n\n  " + (company || "(brief only)") +
+    "\n\nEach candidate is fetch-tested with the same engine ② uses, so only\n" +
+    "reachable links get written. This takes ~2–4 minutes (the web search is\n" +
+    "the slow part) — the sheet will pause until it finishes.", ui.ButtonSet.OK);
+
+  // Start the job.
+  const started = rbFetch_("/research/discover", {
+    method: "post", contentType: "application/json",
+    payload: JSON.stringify({ company: company, brief: brief })
+  });
+  const jobId = started.jobId;
+
+  // Poll. Discovery = one web search + fetch-tests (each capped at ~15s). Web
+  // search can run 60–120s on its own, so give it the full budget: 40 × 8s ≈
+  // 5.3 min stays inside the 6-min Apps Script cap. The job runs detached on the
+  // server, so a slow topic finishes there even if a shorter window gave up.
+  let data = null;
+  for (let i = 0; i < 40; i++) {
+    Utilities.sleep(8000);
+    const poll = rbFetch_("/research/discover/" + jobId, { method: "get" });
+    if (poll.status === "done")  { data = poll; break; }
+    if (poll.status === "error") throw new Error("Discovery failed: " + poll.error);
+  }
+  if (!data) throw new Error("Discovery timed out after ~5 min. The server may still be finishing — " +
+    "check the server window; if it logs '[Discover] job … done', just re-run to pick up a fresh result.");
+
+  const fetchable = data.fetchable || [];
+  const blocked   = data.blocked   || [];
+
+  if (!fetchable.length) {
+    ui.alert("🔎 No fetchable sources found — " + idea.id,
+      "The search found " + (data.stats ? data.stats.candidates : 0) + " candidate(s), but none " +
+      "were reachable by the engine (all paywalled, bot-walled, or dead).\n\n" +
+      (blocked.length
+        ? "Blocked:\n\n  • " + blocked.slice(0, 6).map(function (b) {
+            return rbShortUrl_(b.url) + " — " + String(b.reason || "").slice(0, 50);
+          }).join("\n  • ")
+        : "") +
+      "\n\nTip: for a source you know is good but blocked, download the page/PDF and\n" +
+      "host it on Drive (anyone-with-link), then paste that link into col P by hand.",
+      ui.ButtonSet.OK);
+    return;
+  }
+
+  // Merge the reachable URLs into Source_URLs (col P), keeping anything already
+  // there. Dedup is case-insensitive on a trailing-slash-normalised form.
+  const existingRaw = String(idea.sheet.getRange(idea.row, COL_RB_IDEA.URLS).getValue()).trim();
+  const existing = existingRaw.split(",").map(function (s) { return s.trim(); })
+    .filter(function (s) { return /^https?:\/\//i.test(s); });
+  const seen = {}, merged = [];
+  existing.concat(fetchable.map(function (f) { return f.url; })).forEach(function (u) {
+    const key = u.replace(/\/+$/, "").toLowerCase();
+    if (key && !seen[key]) { seen[key] = true; merged.push(u); }
+  });
+
+  idea.sheet.getRange(idea.row, COL_RB_IDEA.URLS).setValue(merged.join(", "));
+  SpreadsheetApp.flush();
+
+  const added = merged.length - existing.length;
+  ui.alert("✅ Sources written to col P — " + idea.id,
+    "Fetchable: " + fetchable.length + " of " + (data.stats ? data.stats.candidates : fetchable.length) +
+    " candidate(s).  " + added + " new link(s) added to Source_URLs.\n\n" +
+    "READY (in col P):\n  • " +
+    fetchable.slice(0, 8).map(function (f) {
+      return rbShortUrl_(f.url) + (f.wordCount ? "  (" + f.wordCount + "w)" : "");
+    }).join("\n  • ") +
+    (blocked.length ? "\n\nDROPPED (unreadable — not written):\n  • " +
+      blocked.slice(0, 5).map(function (b) {
+        return rbShortUrl_(b.url) + " — " + String(b.reason || "").slice(0, 40);
+      }).join("\n  • ") : "") +
+    "\n\nNow run ② Run verified research.",
+    ui.ButtonSet.OK);
+}
+
+// Compact a URL for an alert dialog (host + trimmed path). Regex-only — Apps
+// Script V8 does not provide the Web `URL` global.
+function rbShortUrl_(u) {
+  const m = String(u || "").match(/^https?:\/\/(?:www\.)?([^\/?#]+)([^?#]*)/i);
+  if (!m) return String(u || "").slice(0, 60);
+  let p = String(m[2] || "").replace(/\/$/, "");
+  if (p.length > 40) p = p.slice(0, 37) + "…";
+  return m[1] + p;
 }
 
 
@@ -976,17 +1091,25 @@ function validateSceneNumbers() {
 // "banks" is never mistaken for "billion".
 function rbNumberTokens_(s) {
   if (s == null) return [];
+  // "bn"/"mn"/"tn" are the abbreviations financial sources use ("$20bn", "$3.4bn"),
+  // and "per cent" (two words) is the British spelling the Globe & Mail etc. use.
+  // Without them a source figure written "$75-billion" or "47.3 per cent" tokenised
+  // to a BARE "75" / "47.3" while the scene emitted "75b" / "47.3pct" — a false block
+  // on a properly-sourced figure. The lookup strips internal spaces so "per cent"
+  // and "percent" both resolve to pct.
   const UNIT = { million:"m", billion:"b", trillion:"t", thousand:"k",
-                 percent:"pct", "%":"pct", m:"m", b:"b", t:"t", k:"k" };
+                 percent:"pct", "%":"pct", m:"m", b:"b", t:"t", k:"k", bn:"b", mn:"m", tn:"t" };
   const MULT = { m:1e6, b:1e9, t:1e12, k:1e3 };
   const out = [];
   // Number = comma-grouped thousands ("1,534,280") OR a plain run ("2100000"),
   // then optional decimal. The (?!\d) stops "50,2016" from merging into one token.
-  const re = /\$?\s?((?:\d{1,3}(?:,\d{3})+(?!\d)|\d+)(?:\.\d+)?)\s*(million|billion|trillion|thousand|percent|%|[mbkt](?![a-z]))?/gi;
+  // [\s-]* (was \s*) lets a hyphen sit between the number and its magnitude word
+  // ("$75-billion"), which is how newspapers write it.
+  const re = /\$?\s?((?:\d{1,3}(?:,\d{3})+(?!\d)|\d+)(?:\.\d+)?)[\s-]*(million|billion|trillion|thousand|percent|per\s?cent|bn|mn|tn|%|[mbkt](?![a-z]))?/gi;
   let m;
   while ((m = re.exec(String(s))) !== null) {
     const num  = m[1].replace(/,/g, "");
-    const unit = UNIT[(m[2] || "").toLowerCase()] || "";
+    const unit = UNIT[(m[2] || "").toLowerCase().replace(/\s+/g, "")] || "";
     out.push(num + unit);
     // Also emit the expanded integer so "2.1 million" and "2100000" (the counter's
     // raw value) compare equal — otherwise a verified figure trips the gate.

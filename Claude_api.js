@@ -22,7 +22,7 @@
 const STAGE_EFFORT = {
   "stage_1_master"    : "high",    // Root cause analysis — high quality, respects 6-min Apps Script limit
   "stage_2_research"  : "high",    // Source identification — benefit from thinking
-  "stage_3_script"    : "high",    // Script generation — high quality, respects 6-min Apps Script limit
+  "stage_3_script"    : "medium",  // Script generation — "high" + adaptive thinking + 32k max_tokens ran non-streaming past the UrlFetchApp/Anthropic HTTP timeout on Opus 4.6, then retried 3× and blew the 6-min Apps Script cap ("Exceeded maximum execution time"). "medium" returns in time; Stage 3B QA Review refines quality after.
   "stage_4_scenes"    : "low",     // Scene routing — structured (cut script into scene blocks). At "medium", adaptive thinking on a 26-30 scene Standard video ran past the 6-min Apps Script limit → timeout. Low thinking keeps the single call fast enough; 4B refines quality after.
   "stage_4_director"  : "medium",  // Director review — structured data fill; high-effort thinking eats the output budget and truncates many-scene videos (was falling through to "high")
   "stage_5_publishing": "low",     // Row creation — formatting task
@@ -184,6 +184,18 @@ function callClaude(finalPrompt, stageKey) {
     } catch (err) {
       lastError = err.message;
       Logger.log("Attempt " + attempt + " failed: " + err.message);
+      // A UrlFetchApp "Timeout" means the generation was too slow to return, not a
+      // transient blip. Retrying the identical call just times out again and burns
+      // the 6-min Apps Script budget — that is what produced "Exceeded maximum
+      // execution time" with nothing saved. Fail fast with an actionable message.
+      if (/timeout|timed out|deadline|took too long/i.test(err.message)) {
+        throw new Error(
+          "Claude API timed out for stage '" + (stageKey || "default") + "' (effort: " + effort +
+          "). The request was too slow to return non-streaming. Lower this stage's effort in " +
+          "STAGE_EFFORT (Claude_api.js), reduce its max_tokens, or route it through the Node async " +
+          "server. Not retried — a retry would only time out again."
+        );
+      }
       if (attempt < MAX_TRIES) Utilities.sleep(RETRY_WAIT_MS);
     }
   }

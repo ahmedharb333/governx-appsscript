@@ -30,6 +30,7 @@ function onOpen() {
     .addSeparator()
     .addItem("1️⃣  Stage 1  — Generate Master Content",     "generateMasterContent")
     .addItem("2️⃣  Stage 2  — Generate Research Database",  "generateResearchDatabase")
+    .addItem("🔎 Research ①· Discover fetchable sources → col P", "discoverSourcesForIdea")
     .addItem("🔎 Research ② Run verified research…",         "runVerifiedResearch")
     .addItem("🔎 Research ②b Suggest which claims to use",   "suggestClaims")
     .addItem("🔎 Research ③ Approve ticked claims → Data Moments", "approveSelectedClaims")

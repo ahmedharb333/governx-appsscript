@@ -2129,17 +2129,41 @@ function speakNumbers_(text) {
   const ORD = { "1": "first", "2": "second", "3": "third", "4": "fourth" };
   let t = String(text || "");
 
-  // Strip thousands-separator commas from inside numbers FIRST, so nothing
+  // Round thousands/millions read reliably ONLY as spoken magnitude words, not as
+  // a raw digit run: ElevenLabs read the comma-stripped "900000" (from "900,000")
+  // wrong. Convert exact round millions, then round thousands, to "<lead> million/
+  // thousand" BEFORE the comma-strip AND before the currency pass below — so
+  // "900,000 units"→"900 thousand units" and "$900,000"→"$900 thousand"→"900
+  // thousand dollars". Non-round groups ("1,300-word", "2,450") never end in a
+  // clean ",000" and fall through to the plain comma-strip unchanged.
+  t = t.replace(/\b(\d{1,3}(?:,\d{3})*),000,000\b/g, function (m, lead) { return lead.replace(/,/g, "") + " million"; });
+  t = t.replace(/\b(\d{1,3}(?:,\d{3})*),000\b/g,     function (m, lead) { return lead.replace(/,/g, "") + " thousand"; });
+
+  // Strip thousands-separator commas from inside any REMAINING numbers, so nothing
   // downstream (and no TTS engine) can misread them. ElevenLabs read "1,300-word"
   // as "300-word" — the comma split the number. A comma sitting between digits that
-  // groups exactly three trailing digits is a thousands separator; "1,300"→"1300",
-  // "130,000"→"130000" (value unchanged, now pronounced correctly). A list comma
+  // groups exactly three trailing digits is a thousands separator; "1,300"→"1300"
+  // (value unchanged, now pronounced correctly). A list comma
   // ("1, 2, 3") has a space after it and is left alone.
   t = t.replace(/\b\d{1,3}(?:,\d{3})+\b/g, function (m) { return m.replace(/,/g, ""); });
 
   // quarters: Q4 → "the fourth quarter"; Q4 2023 → "the fourth quarter of 2023"
   t = t.replace(/\bQ([1-4])(?:\s+(\d{4}))?\b/g,
     function (m, q, yr) { return "the " + ORD[q] + " quarter" + (yr ? " of " + yr : ""); });
+
+  // Country-prefixed dollar codes (C$, US$, A$, HK$, NZ$, S$) MUST expand before
+  // the bare "$" handler below — otherwise "C$20 million" matches only the "$20
+  // million" part, leaves the "C" stranded, and ElevenLabs says "C 20 million
+  // dollars". Map each prefix to its spoken currency: "C$20 million" → "20 million
+  // Canadian dollars", "C$69" → "69 Canadian dollars". Multi-letter codes are
+  // listed first so "US$" wins over the single-letter "S$".
+  const DOLLAR_PREFIX = { US: "US dollars", HK: "Hong Kong dollars", NZ: "New Zealand dollars",
+                          C: "Canadian dollars", A: "Australian dollars", S: "Singapore dollars" };
+  t = t.replace(/\b(US|HK|NZ|C|A|S)\$\s?(\d[\d.,]*)(?:\s?(million|billion|trillion|thousand|[KMBT]))?\b/g,
+    function (m, code, num, mag) {
+      const magWord = mag ? " " + (MAG[mag.toLowerCase()] || mag.toLowerCase()) : "";
+      return num + magWord + " " + DOLLAR_PREFIX[code];
+    });
 
   // currency symbol + amount (+ optional magnitude word or letter) → amount magnitude currency
   t = t.replace(/([$¥€£])\s?(\d[\d.,]*)(?:\s?(million|billion|trillion|thousand|[KMBT]))?\b/gi,

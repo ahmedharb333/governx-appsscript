@@ -246,17 +246,31 @@ function finalizeAssembly_(idea, serverBase, result) {
   const ui = SpreadsheetApp.getUi();
   const ss = SpreadsheetApp.getActiveSpreadsheet();
 
-  // result.url = http://localhost:3000/output/{filename} — rewrite to the public server base.
-  const mp4Url = String(result.url || "")
-    .replace(/https?:\/\/localhost:\d+/, serverBase)
-    .replace(/https?:\/\/127\.0\.0\.1:\d+/, serverBase);
-  Logger.log("Stage 9C: downloading MP4 from " + mp4Url);
+  const filename = idea.id + "_final_video.mp4";
 
-  const filename      = idea.id + "_final_video.mp4";
-  const contentFolder = getOrCreateContentFolder(idea.id, idea.company);
-  const blob          = downloadRenderedFile_(mp4Url, filename, result.bytes);
-  const driveFile     = contentFolder.createFile(blob);
-  const driveUrl      = driveFile.getUrl();
+  // PREFER the file the SERVER already streamed straight to Drive — no download
+  // here, so no memory blowup at any file size. Apps Script only pulls the file
+  // itself as a FALLBACK (Drive not configured on the server), and that path
+  // holds the whole video as a number[] (~8x its size) and OOMs on large films.
+  // To keep the server-upload path working: service-account.json + DRIVE_FOLDER_ID
+  // on the render server (see governx-remotion/src/server/drive-upload.js).
+  let driveUrl;
+  if (result.drive && result.drive.driveUrl) {
+    driveUrl = result.drive.driveUrl;
+    Logger.log("Stage 9C: server uploaded to Drive — " + driveUrl);
+  } else {
+    if (result.driveError) {
+      Logger.log("Stage 9C: server Drive upload failed (" + result.driveError + ") — falling back to Apps Script download.");
+    }
+    // result.url = http://localhost:3000/output/{filename} — rewrite to the public server base.
+    const mp4Url = String(result.url || "")
+      .replace(/https?:\/\/localhost:\d+/, serverBase)
+      .replace(/https?:\/\/127\.0\.0\.1:\d+/, serverBase);
+    Logger.log("Stage 9C: downloading MP4 from " + mp4Url);
+    const contentFolder = getOrCreateContentFolder(idea.id, idea.company);
+    const blob          = downloadRenderedFile_(mp4Url, filename, result.bytes);
+    driveUrl            = contentFolder.createFile(blob).getUrl();
+  }
 
   // Write the final-video link to the Publishing Tracker (mirror Stage 9B).
   const pubSheet = ss.getSheetByName(SHEET.PUBLISHING);
