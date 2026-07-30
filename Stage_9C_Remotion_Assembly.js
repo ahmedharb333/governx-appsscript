@@ -116,7 +116,7 @@ function assembleFilmRemotion() {
       payload           : JSON.stringify({
         contentId    : idea.id,
         scenes       : scenes,
-        showCaptions : false
+        showCaptions : true          // bold narration subtitle band on every scene
       }),
       muteHttpExceptions: true
     });
