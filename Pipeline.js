@@ -4049,6 +4049,12 @@ ${sceneList || "No scene timestamps available"}
 KEY SOURCES USED:
 ${sourceList || "No sources available"}
 
+HARD RULES (non-negotiable — the channel's credibility depends on these):
+• VERIFIED FIGURES ONLY. Every dollar amount, valuation, market share, percentage and date in the DESCRIPTION and the FIRST_COMMENT must be supported by KEY SOURCES USED above. If a number is NOT supported there, do not state it — omit it, or phrase the sentence without the number. Never attach a peak-valuation figure to the wrong year (e.g. a 2000 peak described as if it were a 2007 figure).
+• HOOK FIRST. The first two lines must state the outcome AND one sourced number, so a real figure is visible before YouTube's "…more" fold. Nothing above the fold may be an unsourced figure.
+• PRECISE VERBS. A deal "announced" on a date is not "completed"/"acquired" on that date unless a source says so. Use the verb the source supports.
+• SOURCES FORMATTING. Under "📚 SOURCES:", list up to 4 sources. Write each as "Title — Publisher" on its own line with its URL beneath, and group every quote from the same source under that one entry (max 3 quotes each). Never leave a bare quote with no source.
+
 GENERATE the following in EXACTLY this format:
 
 TITLE_A: [Primary title — sharp, specific, includes company name and the failure — under 60 chars]
@@ -4057,13 +4063,13 @@ TITLE_C: [A/B variant — question format "Why did..." or "How did..." — under
 
 DESCRIPTION_START
 [Full YouTube description — 150-200 words]
-[Line 1-2: Hook — the visible outcome, specific stat]
+[Line 1-2: Hook — the visible outcome + ONE sourced number, front-loaded before the fold]
 [Line 3-5: What the video reveals — the reverse-engineering angle]
 [Line 6-8: The GRC/BPR lesson and why it matters]
 [Line 9-10: Series context and subscribe CTA]
 
 📚 SOURCES:
-[List top 3 sources with titles]
+[Up to 4 sources — each "Title — Publisher" with its URL beneath; group quotes under their source (max 3 each); NO bare quotes; verified figures only]
 
 🔗 GovernX Series: ${idea.series}
 [End the description with 4-5 hashtags. The first three render above the title, so lead with the SPECIFIC ones — company, person, core topic (e.g. #Nissan #CarlosGhosn #CorporateGovernance) — then #GovernX #GRC. Keep them consistent with the HASHTAGS field below.]
@@ -4079,7 +4085,7 @@ CHAPTERS_END
 
 HASHTAGS: [8-10 hashtags. YouTube shows ONLY THE FIRST THREE above the title, so make those three the strongest and most-searched — the company, the person, and the core topic (e.g. #Nissan #CarlosGhosn #CorporateGovernance). Put #GovernX and any generic tags AFTER the first three. Do NOT force #BPR into the top three.]
 
-FIRST_COMMENT: [Pinned comment — 2-3 sentences. Pose a question to drive engagement. Reference the GovernX reverse-engineering method. Ask audience what company they want analyzed next.]
+FIRST_COMMENT: [Pinned comment — 2-3 sentences. Pose a question to drive engagement. Reference the GovernX reverse-engineering method. Ask audience what company they want analyzed next. Use NO figure unless it is supported by KEY SOURCES USED.]
 
 END_SCREEN: [End-screen CTA — ONE concrete, punchy line that echoes the film's closing thesis, then a subscribe push. Mirror the GRC Closing above and the channel's signature framing "Every collapse has an architecture." Example pattern: "Every collapse has an architecture. Subscribe to GovernX — learn to see it before it breaks." Do NOT invent abstract phrasings like "every satisfactory outcome"; keep it about collapse/failure and tie it to this specific case.]
 
@@ -4113,7 +4119,13 @@ function buildYouTubeChapters_(scenes, claudeChapters) {
     // like "9.078 billion yen" is never chopped to "9".
     let t = s.desc.replace(/^\[[^\]]*\]\s*/, "").replace(/^[A-Z_]+\s+—\s+/, "").trim();
     t = t.split(/\.\s|:\s|\s—\s/)[0].trim();
-    return (t || s.type || "Chapter").slice(0, 48);
+    t = t || s.type || "Chapter";
+    if (t.length <= 48) return t;
+    // Trim to 48 but back off to the last word boundary so a title never ends
+    // mid-word ("Apple posted 78 percent ea…"). Fall back to a hard cut only if the
+    // first 48 chars are a single long token (no usable space past char 24).
+    const cut = t.slice(0, 48), sp = cut.lastIndexOf(" ");
+    return (sp > 24 ? cut.slice(0, sp) : cut).trim();
   };
 
   const out = [{ sec: 0, title: "Introduction" }];
@@ -4163,6 +4175,21 @@ function capTags_(tagString, maxChars) {
 }
 
 // ── Write YouTube metadata to dedicated tab ───────────────────────────────────
+/* ── Dedupe + hard-cap hashtags. YouTube IGNORES ALL hashtags in a field once there
+   are more than 15, so cap at 15 and drop case-insensitive duplicates while keeping
+   order (the first three matter most — they render above the title). */
+function cleanHashtags_(line, max) {
+  const cap = max || 15, seen = {}, out = [];
+  String(line || "").split(/\s+/).forEach(function (tok) {
+    if (tok.charAt(0) !== "#" || tok.length < 2) return;
+    const key = tok.toLowerCase();
+    if (seen[key]) return;
+    seen[key] = true;
+    out.push(tok);
+  });
+  return out.slice(0, cap).join(" ");
+}
+
 function writeYouTubeMetadata(contentId, raw, master, script, scenes) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
 
@@ -4231,7 +4258,7 @@ function writeYouTubeMetadata(contentId, raw, master, script, scenes) {
   sheet.getRange(targetRow, COL_YOUTUBE.DESCRIPTION    ).setValue(getBlock("DESCRIPTION_START", "DESCRIPTION_END")).setWrap(true);
   sheet.getRange(targetRow, COL_YOUTUBE.TAGS           ).setValue(capTags_(getLine("TAGS"), 480)).setWrap(true);
   sheet.getRange(targetRow, COL_YOUTUBE.CHAPTERS       ).setValue(chapters).setWrap(true);
-  sheet.getRange(targetRow, COL_YOUTUBE.HASHTAGS       ).setValue(getLine("HASHTAGS")).setWrap(true);
+  sheet.getRange(targetRow, COL_YOUTUBE.HASHTAGS       ).setValue(cleanHashtags_(getLine("HASHTAGS"), 15)).setWrap(true);
   sheet.getRange(targetRow, COL_YOUTUBE.FIRST_COMMENT  ).setValue(getLine("FIRST_COMMENT")).setWrap(true);
   sheet.getRange(targetRow, COL_YOUTUBE.END_SCREEN     ).setValue(getLine("END_SCREEN")).setWrap(true);
   sheet.getRange(targetRow, COL_YOUTUBE.THUMBNAIL_BRIEF).setValue(
