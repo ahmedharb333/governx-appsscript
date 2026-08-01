@@ -787,4 +787,30 @@ function writeDirectorReviewResults(contentId, pass2Raw) {
 
   SpreadsheetApp.flush();
   Logger.log("Stage 4 Pass 2 complete — " + reviewBlocks.length + " scenes reviewed.");
-} 
+
+  // ── Duplicate-voiceover guard (code-enforced) ──────────────────────────────
+  // The prompt forbids two scenes sharing a VOICEOVER_SYNC, but the director reviews
+  // scenes in BATCHES — a later batch can't see the lines an earlier batch already
+  // used, so the same sentence gets assigned twice (the Kodak cut narrated 6 lines
+  // twice). Enforce it in CODE: scan every scene for this idea and alert on exact
+  // repeats so they're fixed BEFORE Stage 7B spends ElevenLabs credits.
+  const seenVO = {}, dupVO = [];
+  const vlAll = visualSheet.getDataRange().getValues();
+  for (let i = 1; i < vlAll.length; i++) {
+    if (String(vlAll[i][COL_VISUAL.ID - 1]).trim() !== contentId) continue;
+    const line = String(vlAll[i][COL_VISUAL_EXTENDED.VOICEOVER_SYNC - 1] || "")
+      .trim().toLowerCase().replace(/\s+/g, " ");
+    if (!line) continue;
+    const sn = vlAll[i][COL_VISUAL.SCENE_NUM - 1];
+    if (seenVO[line]) dupVO.push("Scene " + sn + " repeats Scene " + seenVO[line]);
+    else seenVO[line] = sn;
+  }
+  if (dupVO.length) {
+    SpreadsheetApp.getUi().alert(
+      "⚠ DUPLICATE VOICEOVER — FIX BEFORE STAGE 7B",
+      dupVO.length + " scene(s) for " + contentId + " carry a voiceover line already used " +
+      "by another scene, so the film would narrate it twice:\n\n" + dupVO.join("\n") +
+      "\n\nEdit or delete the repeated scene(s) before running Stage 7B / Stage 9C.",
+      SpreadsheetApp.getUi().ButtonSet.OK);
+  }
+}

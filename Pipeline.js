@@ -607,6 +607,14 @@ function writeResearchDatabase(contentId, topic, raw) {
     rowsToDelete.forEach(row => sheet.deleteRow(row));
   }
 
+  // Ensure the sheet has room to append. A cell-by-cell write via getLastRow()+1
+  // throws "coordinates outside the dimensions of the sheet" the instant data fills
+  // the last grid row — exactly what a brand-NEW content id hits (no old rows were
+  // deleted above to free space). Pre-extend the grid so every write below fits.
+  if (sheet.getMaxRows() - sheet.getLastRow() < 60) {
+    sheet.insertRowsAfter(sheet.getMaxRows(), 200);
+  }
+
   // Parse all SOURCE blocks and write fresh
   const sourceBlocks = raw.match(/SOURCE_\d+_START([\s\S]*?)SOURCE_\d+_END/g) || [];
 
