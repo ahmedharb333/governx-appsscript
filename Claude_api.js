@@ -163,6 +163,16 @@ function callClaude(finalPrompt, stageKey) {
         return textContent;
       }
 
+      // Claude credit exhausted (400 "credit balance is too low") → fall back to the
+      // free Groq model so the pipeline keeps producing. A funded account never hits
+      // this. groqFallback_ tags the run for a later Claude re-run.
+      if (code === 400 && /credit balance is too low/i.test(body)) {
+        const fb = groqFallback_(SYSTEM_CONTEXT, finalPrompt, stageMaxTokens, stageKey);
+        if (fb !== null) return fb;
+        throw new Error("Claude credit is zero and no GROQ_API_KEY is set. Add Anthropic credits, " +
+          "or set GROQ_API_KEY in Script Properties to keep producing on the free fallback.");
+      }
+
       if (code === 529) {
         lastError = "API overloaded (529)";
         Logger.log("Attempt " + attempt + "/" + MAX_TRIES +
@@ -293,6 +303,14 @@ function callClaudeWithCustomSystem(finalPrompt, systemContext, effort, maxToken
           .join("");
       }
 
+      // Claude credit exhausted → free Groq fallback (see callClaude for rationale).
+      if (code === 400 && /credit balance is too low/i.test(body)) {
+        const fb = groqFallback_(systemContext, finalPrompt, resolvedMaxTokens, "custom");
+        if (fb !== null) return fb;
+        throw new Error("Claude credit is zero and no GROQ_API_KEY is set. Add Anthropic credits, " +
+          "or set GROQ_API_KEY in Script Properties to keep producing on the free fallback.");
+      }
+
       if (code === 529 || code === 429) {
         lastError = "API error " + code;
         Utilities.sleep(code === 429 ? RATELIMIT_MS : RETRY_WAIT_MS);
@@ -308,6 +326,55 @@ function callClaudeWithCustomSystem(finalPrompt, systemContext, effort, maxToken
   }
 
   throw new Error("API failed after " + MAX_TRIES + " attempts. Last: " + lastError);
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+// groqFallback_() — FREE FALLBACK WHEN CLAUDE CREDIT HITS ZERO
+//
+// Fires ONLY when Claude returns "credit balance is too low" (a 400). Keeps the
+// pipeline producing while the Anthropic account is at $0, using Llama 3.3 70B
+// (free at console.groq.com). Quality is BELOW Claude, so every fallback call is
+// recorded in the GROQ_FALLBACK_LOG script property — re-run those stages on
+// Claude once the account is funded to restore full quality. Returns null when no
+// GROQ_API_KEY is set, so the caller raises its normal error instead of hiding it.
+// ══════════════════════════════════════════════════════════════════════════════
+function groqFallback_(systemText, userPrompt, maxTokens, stageKey) {
+  const key = PropertiesService.getScriptProperties().getProperty("GROQ_API_KEY");
+  if (!key) return null;   // no fallback configured → let the caller throw
+
+  const payload = {
+    model      : "llama-3.3-70b-versatile",
+    max_tokens : Math.min(maxTokens || 8000, 8000),   // Llama 70B output ceiling
+    messages   : [
+      { role: "system", content: String(systemText || "") },
+      { role: "user",   content: userPrompt }
+    ]
+  };
+
+  const resp = UrlFetchApp.fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method            : "post",
+    contentType       : "application/json",
+    headers           : { "Authorization": "Bearer " + key },
+    payload           : JSON.stringify(payload),
+    muteHttpExceptions: true
+  });
+
+  const code = resp.getResponseCode(), body = resp.getContentText();
+  if (code !== 200) throw new Error("Groq fallback also failed (" + code + "): " + body.substring(0, 300));
+
+  const text = JSON.parse(body).choices[0].message.content;
+
+  // Tag the run so you know which stages to re-run on Claude once funded.
+  const props = PropertiesService.getScriptProperties();
+  const log   = props.getProperty("GROQ_FALLBACK_LOG") || "";
+  props.setProperty("GROQ_FALLBACK_LOG",
+    (log + "\n" + new Date().toISOString() + " — " + (stageKey || "custom") +
+     " ran on Groq (re-run on Claude when funded)").slice(-4000));
+  Logger.log("⚠ [GovernX] Claude credit exhausted → GROQ fallback used for '" +
+    (stageKey || "custom") + "'. Quality below Claude; re-run this stage when funded.");
+
+  return text;
 }
 
 
