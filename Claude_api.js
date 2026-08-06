@@ -340,38 +340,53 @@ function callClaudeWithCustomSystem(finalPrompt, systemContext, effort, maxToken
 // GROQ_API_KEY is set, so the caller raises its normal error instead of hiding it.
 // ══════════════════════════════════════════════════════════════════════════════
 function groqFallback_(systemText, userPrompt, maxTokens, stageKey) {
-  const key = PropertiesService.getScriptProperties().getProperty("GROQ_API_KEY");
-  if (!key) return null;   // no fallback configured → let the caller throw
+  const props = PropertiesService.getScriptProperties();
+  const orKey = props.getProperty("OPENROUTER_API_KEY");
+  const gqKey = props.getProperty("GROQ_API_KEY");
 
-  const payload = {
-    model      : "llama-3.3-70b-versatile",
-    max_tokens : Math.min(maxTokens || 8000, 8000),   // Llama 70B output ceiling
-    messages   : [
-      { role: "system", content: String(systemText || "") },
-      { role: "user",   content: userPrompt }
-    ]
-  };
+  // Prefer OpenRouter: it handles the big prompts (Stage 4B ~19k tokens, research
+  // extract) that Groq's free 12k-tokens/min tier rejects. Groq stays as a
+  // secondary. Model is overridable via OPENROUTER_MODEL / GROQ_MODEL if a free
+  // slug gets busy or is renamed.
+  let url, key, model;
+  if (orKey) {
+    url = "https://openrouter.ai/api/v1/chat/completions";
+    key = orKey;
+    model = props.getProperty("OPENROUTER_MODEL") || "meta-llama/llama-3.3-70b-instruct:free";
+  } else if (gqKey) {
+    url = "https://api.groq.com/openai/v1/chat/completions";
+    key = gqKey;
+    model = props.getProperty("GROQ_MODEL") || "llama-3.3-70b-versatile";
+  } else {
+    return null;   // no fallback configured → let the caller throw
+  }
 
-  const resp = UrlFetchApp.fetch("https://api.groq.com/openai/v1/chat/completions", {
+  const resp = UrlFetchApp.fetch(url, {
     method            : "post",
     contentType       : "application/json",
     headers           : { "Authorization": "Bearer " + key },
-    payload           : JSON.stringify(payload),
+    payload           : JSON.stringify({
+      model     : model,
+      max_tokens: Math.min(maxTokens || 8000, 16000),
+      messages  : [
+        { role: "system", content: String(systemText || "") },
+        { role: "user",   content: userPrompt }
+      ]
+    }),
     muteHttpExceptions: true
   });
 
   const code = resp.getResponseCode(), body = resp.getContentText();
-  if (code !== 200) throw new Error("Groq fallback also failed (" + code + "): " + body.substring(0, 300));
+  if (code !== 200) throw new Error("LLM fallback (" + model + ") failed " + code + ": " + body.substring(0, 400));
 
   const text = JSON.parse(body).choices[0].message.content;
 
   // Tag the run so you know which stages to re-run on Claude once funded.
-  const props = PropertiesService.getScriptProperties();
-  const log   = props.getProperty("GROQ_FALLBACK_LOG") || "";
+  const log = props.getProperty("GROQ_FALLBACK_LOG") || "";
   props.setProperty("GROQ_FALLBACK_LOG",
     (log + "\n" + new Date().toISOString() + " — " + (stageKey || "custom") +
-     " ran on Groq (re-run on Claude when funded)").slice(-4000));
-  Logger.log("⚠ [GovernX] Claude credit exhausted → GROQ fallback used for '" +
+     " ran on " + model + " (re-run on Claude when funded)").slice(-4000));
+  Logger.log("⚠ [GovernX] Claude credit exhausted → fallback '" + model + "' used for '" +
     (stageKey || "custom") + "'. Quality below Claude; re-run this stage when funded.");
 
   return text;
