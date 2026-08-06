@@ -656,14 +656,6 @@ function callClaudeAsSelector(finalPrompt) {
         return json.content[0].text;
       }
 
-      // Claude credit exhausted → free Groq fallback so the company selector keeps flowing.
-      if (code === 400 && /credit balance is too low/i.test(body)) {
-        const fb = groqFallback_(SELECTOR_SYSTEM_CONTEXT, finalPrompt, 8000, "stage_0_selector");
-        if (fb !== null) return fb;
-        throw new Error("Claude credit is zero and no GROQ_API_KEY is set. Add Anthropic credits, " +
-          "or set GROQ_API_KEY in Script Properties to keep producing on the free fallback.");
-      }
-
       if (code === 529 || code === 429) {
         lastError = "API error " + code;
         Utilities.sleep(code === 429 ? RATELIMIT_MS : RETRY_WAIT_MS);

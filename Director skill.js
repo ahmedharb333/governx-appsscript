@@ -667,14 +667,6 @@ function callClaudeAsDirector(finalPrompt) {
         return json.content[0].text;
       }
 
-      // Claude credit exhausted → free Groq fallback so Stage 4B keeps flowing.
-      if (code === 400 && /credit balance is too low/i.test(body)) {
-        const fb = groqFallback_(DIRECTOR_SYSTEM_CONTEXT, finalPrompt, 12000, "stage_4b_director");
-        if (fb !== null) return fb;
-        throw new Error("Claude credit is zero and no GROQ_API_KEY is set. Add Anthropic credits, " +
-          "or set GROQ_API_KEY in Script Properties to keep producing on the free fallback.");
-      }
-
       if (code === 529) {
         lastError = "API overloaded (529)";
         if (attempt < MAX_TRIES) Utilities.sleep(RETRY_WAIT_MS);
