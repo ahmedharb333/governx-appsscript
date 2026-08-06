@@ -352,7 +352,7 @@ function groqFallback_(systemText, userPrompt, maxTokens, stageKey) {
   if (orKey) {
     url = "https://openrouter.ai/api/v1/chat/completions";
     key = orKey;
-    model = props.getProperty("OPENROUTER_MODEL") || "nvidia/nemotron-3-ultra-550b-a55b:free";
+    model = props.getProperty("OPENROUTER_MODEL") || "google/gemma-4-31b-it:free";
   } else if (gqKey) {
     url = "https://api.groq.com/openai/v1/chat/completions";
     key = gqKey;
