@@ -179,6 +179,14 @@ function callClaude(finalPrompt, stageKey) {
         continue;
       }
 
+      // ── Claude credit exhausted → automatic Gemini fallback ───────────────
+      // A zero-balance 400 will NEVER succeed on retry, so don't spend the other
+      // attempts on it — go straight to the free provider and return its text.
+      if (code === 400 && /credit balance is too low/i.test(body)) {
+        const fb = geminiFallback_(SYSTEM_CONTEXT, finalPrompt, stageMaxTokens, stageKey);
+        if (fb !== null) return fb;
+      }
+
       throw new Error("Claude API error " + code + ": " + body);
 
     } catch (err) {
@@ -186,14 +194,16 @@ function callClaude(finalPrompt, stageKey) {
       Logger.log("Attempt " + attempt + " failed: " + err.message);
       // A UrlFetchApp "Timeout" means the generation was too slow to return, not a
       // transient blip. Retrying the identical call just times out again and burns
-      // the 6-min Apps Script budget — that is what produced "Exceeded maximum
-      // execution time" with nothing saved. Fail fast with an actionable message.
+      // the 6-min Apps Script budget. So fall straight to the free Gemini provider
+      // (fast Flash — it won't itself time out) if a key is set; otherwise fail with
+      // an actionable message rather than retrying into another timeout.
       if (/timeout|timed out|deadline|took too long/i.test(err.message)) {
+        const fb = geminiFallback_(SYSTEM_CONTEXT, finalPrompt, 16000, stageKey);
+        if (fb !== null) return fb;
         throw new Error(
           "Claude API timed out for stage '" + (stageKey || "default") + "' (effort: " + effort +
-          "). The request was too slow to return non-streaming. Lower this stage's effort in " +
-          "STAGE_EFFORT (Claude_api.js), reduce its max_tokens, or route it through the Node async " +
-          "server. Not retried — a retry would only time out again."
+          "). Too slow to return non-streaming, and no GEMINI_API_KEY is set for fallback. Add a " +
+          "Gemini key (free), lower this stage's effort in STAGE_EFFORT, or reduce its max_tokens."
         );
       }
       if (attempt < MAX_TRIES) Utilities.sleep(RETRY_WAIT_MS);
@@ -299,15 +309,97 @@ function callClaudeWithCustomSystem(finalPrompt, systemContext, effort, maxToken
         continue;
       }
 
+      if (code === 400 && /credit balance is too low/i.test(body)) {
+        const fb = geminiFallback_(systemContext, finalPrompt, resolvedMaxTokens, "custom");
+        if (fb !== null) return fb;
+      }
+
       throw new Error("API error " + code + ": " + body);
 
     } catch (err) {
       lastError = err.message;
+      if (/timeout|timed out|deadline|took too long/i.test(err.message)) {
+        const fb = geminiFallback_(systemContext, finalPrompt, resolvedMaxTokens, "custom");
+        if (fb !== null) return fb;
+      }
       if (attempt < MAX_TRIES) Utilities.sleep(RETRY_WAIT_MS);
     }
   }
 
   throw new Error("API failed after " + MAX_TRIES + " attempts. Last: " + lastError);
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+// geminiFallback_() — FREE AUTOMATIC FALLBACK when Claude is unavailable
+//
+// Fires ONLY when Claude returns "credit balance is too low" (console at $0) or a
+// UrlFetchApp timeout. Keeps the whole pipeline flowing on Google Gemini's genuinely
+// free tier (a real per-account quota, not a shared pool) while the Anthropic
+// console is unfunded. Shared by every GovernX Claude entry point:
+//   callClaude, callClaudeWithCustomSystem, callClaudeAsDirector,
+//   callClaudeAsEvaluator, callClaudeAsSelector.
+//
+// TRIGGER MODE: auto only. There is no manual switch — Claude is always tried first;
+// Gemini runs only when Claude cannot. When funded, this code never executes.
+//
+// QUALITY NOTE: Gemini Flash is below Claude, especially on adversarial reasoning.
+// Every Gemini run is logged to the GEMINI_FALLBACK_LOG Script Property so you can
+// re-run those stages on Claude once the console is funded. Draft-while-broke,
+// finalise-on-Claude-when-funded.
+//
+// Returns the model's text, or null when no GEMINI_API_KEY is set (so the caller
+// raises its normal error instead of silently doing nothing).
+//
+// Uses Gemini's OpenAI-compatible endpoint, so the request shape matches every
+// other OpenAI-style provider. Model overridable via the GEMINI_MODEL property
+// (default gemini-2.0-flash — solidly free; set gemini-2.5-flash for higher quality
+// if your key has it).
+// ══════════════════════════════════════════════════════════════════════════════
+function geminiFallback_(systemText, userPrompt, maxTokens, stageKey) {
+  const props = PropertiesService.getScriptProperties();
+  const key   = props.getProperty("GEMINI_API_KEY");
+  if (!key) return null;   // no key configured → caller throws its normal error
+
+  const model = props.getProperty("GEMINI_MODEL") || "gemini-2.0-flash";
+  const url   = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+
+  const resp = UrlFetchApp.fetch(url, {
+    method            : "post",
+    contentType       : "application/json",
+    headers           : { "Authorization": "Bearer " + key },
+    payload           : JSON.stringify({
+      model,
+      // Gemini 2.0 Flash caps output at 8192 tokens; every GovernX stage's real
+      // output (a script, a director batch, a metadata block) fits well inside it.
+      max_tokens: Math.min(maxTokens || 8000, 8192),
+      messages  : [
+        { role: "system", content: String(systemText || "") },
+        { role: "user",   content: String(userPrompt  || "") }
+      ]
+    }),
+    muteHttpExceptions: true
+  });
+
+  const code = resp.getResponseCode();
+  const body = resp.getContentText();
+  if (code !== 200) {
+    throw new Error("Gemini fallback (" + model + ") failed " + code + ": " + body.substring(0, 300));
+  }
+
+  const json = JSON.parse(body);
+  const text = (json.choices && json.choices[0] && json.choices[0].message &&
+                json.choices[0].message.content) || "";
+
+  // Flag every fallback run so you know exactly which stages to re-run on Claude.
+  const stamp = new Date().toISOString() + " — " + (stageKey || "custom") +
+                " ran on " + model + " (re-run on Claude when funded)";
+  const log = props.getProperty("GEMINI_FALLBACK_LOG") || "";
+  props.setProperty("GEMINI_FALLBACK_LOG", (log + "\n" + stamp).slice(-4000));
+  Logger.log("⚠ [GovernX] Claude unavailable → Gemini fallback '" + model +
+             "' used for '" + (stageKey || "custom") + "'. Quality below Claude — " +
+             "re-run this stage on Claude when the console is funded.");
+  return text;
 }
 
 

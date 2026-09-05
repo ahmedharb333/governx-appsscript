@@ -662,10 +662,19 @@ function callClaudeAsSelector(finalPrompt) {
         continue;
       }
 
+      if (code === 400 && /credit balance is too low/i.test(body)) {
+        const fb = geminiFallback_(SELECTOR_SYSTEM_CONTEXT, finalPrompt, 8000, "stage_0_selector");
+        if (fb !== null) return fb;
+      }
+
       throw new Error("Selector API error " + code + ": " + body);
 
     } catch (err) {
       lastError = err.message;
+      if (/timeout|timed out|deadline|took too long/i.test(err.message)) {
+        const fb = geminiFallback_(SELECTOR_SYSTEM_CONTEXT, finalPrompt, 8000, "stage_0_selector");
+        if (fb !== null) return fb;
+      }
       if (attempt < MAX_TRIES) Utilities.sleep(RETRY_WAIT_MS);
     }
   }

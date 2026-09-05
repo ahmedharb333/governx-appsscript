@@ -739,10 +739,19 @@ EVAL_REPORT_END
         continue;
       }
 
+      if (code === 400 && /credit balance is too low/i.test(body)) {
+        const fb = geminiFallback_(QA_CRITIC_SYSTEM_CONTEXT, evalPrompt, 4000, "stage_3b_critic");
+        if (fb !== null) return fb;
+      }
+
       throw new Error("Evaluator API error " + code + ": " + body);
 
     } catch (err) {
       lastError = err.message;
+      if (/timeout|timed out|deadline|took too long/i.test(err.message)) {
+        const fb = geminiFallback_(QA_CRITIC_SYSTEM_CONTEXT, evalPrompt, 4000, "stage_3b_critic");
+        if (fb !== null) return fb;
+      }
       if (attempt < MAX_TRIES) Utilities.sleep(RETRY_WAIT_MS);
     }
   }
