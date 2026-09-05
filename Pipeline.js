@@ -2285,13 +2285,21 @@ function generateVoiceover() {
     );
 
     const code = response.getResponseCode();
-    if (code !== 200) {
-      throw new Error("ElevenLabs API error " + code + ": " + response.getContentText());
-    }
 
-    // ── Save MP3 to Drive subfolder ───────────────────────────────────────
-    const audioBlob  = response.getBlob().setContentType("audio/mpeg");
-    const fileName   = idea.id + " — " + idea.company + " — Voiceover.mp3";
+    // ── ElevenLabs OK → brand-voice MP3; else free Gemini-TTS draft ──────────
+    // When the ElevenLabs sub is unpaid/out of credits (401/402/quota), fall to
+    // Gemini TTS so the pipeline keeps flowing. The VOICE differs from your clone,
+    // so this is a DRAFT — re-record on ElevenLabs before publishing.
+    let audioBlob, fileName;
+    if (code === 200) {
+      audioBlob = response.getBlob().setContentType("audio/mpeg");
+      fileName  = idea.id + " — " + idea.company + " — Voiceover.mp3";
+    } else {
+      const wav = geminiTtsFallback_(speakNumbers_(voiceover), "stage_7_voiceover");
+      if (!wav) throw new Error("ElevenLabs API error " + code + ": " + response.getContentText() + " (and no GEMINI_API_KEY set for TTS fallback)");
+      audioBlob = wav;
+      fileName  = idea.id + " — " + idea.company + " — Voiceover (Gemini draft).wav";
+    }
     const folder     = getOrCreateContentFolder(idea.id, idea.company);
 
     // Delete existing audio file if any
@@ -2459,12 +2467,18 @@ function generateSceneVoiceovers() {
       );
 
       const code = response.getResponseCode();
-      if (code !== 200) {
-        throw new Error("ElevenLabs API error " + code + ": " + response.getContentText().substring(0, 200));
-      }
 
-      const fileName  = idea.id + "_scene_" + scene.sceneNum + "_voiceover.mp3";
-      const audioBlob = response.getBlob().setContentType("audio/mpeg").setName(fileName);
+      // ElevenLabs OK → brand-voice MP3; else free Gemini-TTS draft (voice differs).
+      let fileName, audioBlob;
+      if (code === 200) {
+        fileName  = idea.id + "_scene_" + scene.sceneNum + "_voiceover.mp3";
+        audioBlob = response.getBlob().setContentType("audio/mpeg").setName(fileName);
+      } else {
+        const wav = geminiTtsFallback_(speakNumbers_(scene.voiceoverSync), "stage_7b_scene_" + scene.sceneNum);
+        if (!wav) throw new Error("ElevenLabs API error " + code + ": " + response.getContentText().substring(0, 200) + " (no GEMINI_API_KEY for TTS fallback)");
+        fileName  = idea.id + "_scene_" + scene.sceneNum + "_voiceover.wav";
+        audioBlob = wav.setName(fileName);
+      }
 
       // Delete any existing file with the same name
       const existing = scenesFolder.getFilesByName(fileName);
@@ -2502,6 +2516,82 @@ function generateSceneVoiceovers() {
     "Shotstack (Stage 9B) will use these for precise scene timing.",
     ui.ButtonSet.OK
   );
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
+// GEMINI-TTS FALLBACK — free voiceover when ElevenLabs is unavailable
+//
+// Fires ONLY when the ElevenLabs call fails (401/402/quota when the sub is unpaid
+// or out of credits). Keeps Stage 7 / 7B producing so you can still assemble and
+// preview. Reuses the SAME GEMINI_API_KEY as the Claude fallback.
+//
+// ⚠ The voice is a Gemini prebuilt voice, NOT your cloned brand voice — so anything
+// made this way is a DRAFT. Re-record on ElevenLabs before publishing. Every use is
+// logged to GEMINI_FALLBACK_LOG.
+//
+// Gemini TTS returns raw 16-bit PCM (base64); we wrap it in a WAV header so ffprobe
+// and Remotion can read it. Returns a WAV Blob, or null when no key is set.
+// Voice/model overridable via GEMINI_TTS_VOICE / GEMINI_TTS_MODEL Script Properties.
+// ════════════════════════════════════════════════════════════════════════════════
+function geminiTtsFallback_(text, stageKey) {
+  const props = PropertiesService.getScriptProperties();
+  const key   = props.getProperty("GEMINI_API_KEY");
+  if (!key) return null;
+
+  const model = props.getProperty("GEMINI_TTS_MODEL") || "gemini-2.5-flash-preview-tts";
+  const voice = props.getProperty("GEMINI_TTS_VOICE") || "Charon";   // deep, authoritative
+  const url   = "https://generativelanguage.googleapis.com/v1beta/models/" + model +
+                ":generateContent?key=" + encodeURIComponent(key);
+
+  const resp = UrlFetchApp.fetch(url, {
+    method: "post", contentType: "application/json", muteHttpExceptions: true,
+    payload: JSON.stringify({
+      contents: [{ parts: [{ text: String(text || "") }] }],
+      generationConfig: {
+        responseModalities: ["AUDIO"],
+        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } }
+      }
+    })
+  });
+  const code = resp.getResponseCode(), body = resp.getContentText();
+  if (code !== 200) throw new Error("Gemini TTS (" + model + ") failed " + code + ": " + body.substring(0, 300));
+
+  const json = JSON.parse(body);
+  const part = json.candidates && json.candidates[0] && json.candidates[0].content &&
+               json.candidates[0].content.parts && json.candidates[0].content.parts[0];
+  const b64 = part && part.inlineData && part.inlineData.data;
+  if (!b64) throw new Error("Gemini TTS returned no audio (" + body.substring(0, 200) + ")");
+
+  const mime  = (part.inlineData.mimeType || "");
+  const rateM = mime.match(/rate=(\d+)/);
+  const rate  = rateM ? parseInt(rateM[1], 10) : 24000;   // Gemini TTS default: 24kHz mono 16-bit
+  const wav   = pcmToWavBlob_(Utilities.base64Decode(b64), rate, 1, 16);
+
+  const stamp = new Date().toISOString() + " — " + (stageKey || "tts") + " ran on Gemini TTS " +
+                model + "/" + voice + " (DRAFT — re-record on ElevenLabs when funded)";
+  const log = props.getProperty("GEMINI_FALLBACK_LOG") || "";
+  props.setProperty("GEMINI_FALLBACK_LOG", (log + "\n" + stamp).slice(-4000));
+  Logger.log("⚠ [GovernX] ElevenLabs unavailable → Gemini TTS fallback (" + voice + ") for " +
+             (stageKey || "tts") + ". DRAFT voice — re-record on ElevenLabs before publishing.");
+  return wav;
+}
+
+// Wrap raw PCM bytes (signed byte[] from base64Decode) in a WAV container so the
+// rest of the pipeline (ffprobe duration, Remotion <Audio>) can read it.
+function pcmToWavBlob_(pcm, sampleRate, channels, bits) {
+  const dataLen    = pcm.length;
+  const byteRate   = sampleRate * channels * (bits / 8);
+  const blockAlign = channels * (bits / 8);
+  const h = [];
+  const s = (str) => { for (let i = 0; i < str.length; i++) h.push(str.charCodeAt(i) & 255); };
+  const u32 = (v) => h.push(v & 255, (v >> 8) & 255, (v >> 16) & 255, (v >> 24) & 255);
+  const u16 = (v) => h.push(v & 255, (v >> 8) & 255);
+  s("RIFF"); u32(36 + dataLen); s("WAVE");
+  s("fmt "); u32(16); u16(1); u16(channels); u32(sampleRate); u32(byteRate); u16(blockAlign); u16(bits);
+  s("data"); u32(dataLen);
+  // Apps Script byte[] is signed (-128..127); convert the 0..255 header bytes.
+  const header = h.map((b) => (b > 127 ? b - 256 : b));
+  return Utilities.newBlob(header.concat(pcm), "audio/wav");
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
