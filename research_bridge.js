@@ -1132,8 +1132,12 @@ function rbNumberTokens_(s) {
    with the case. (`from=0` only slipped through because 0 is benign; any duration
    over 12 seconds would block.) Strip them before the evidence scan. */
 function rbStripRenderParams_(s) {
+  // Also strip the cinematic subject= search fields: they are image-fetch queries,
+  // NEVER rendered on screen, so a model number inside a product name ("BlackBerry
+  // Bold 9900") must not be gated as an on-screen figure. Caption/stat/label text
+  // stays scanned — those DO render and must still trace to a verified claim.
   return String(s == null ? "" : s)
-    .replace(/\b(duration|from|num|total|failure_index|splitfrac|delay)\s*=\s*[^|]*/gi, "");
+    .replace(/\b(duration|from|num|total|failure_index|splitfrac|delay|subject|left_subject|right_subject)\s*=\s*[^|]*/gi, "");
 }
 
 // EVERY array format splits the magnitude away from the number the same way

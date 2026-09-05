@@ -625,6 +625,86 @@ They render today. Reach for them whenever the evidence supports one.
       REMOTION_STYLE: template=GovernanceMethod | variant=standard | weight=root
 
 ═══════════════════════════════════════════════════════
+CINEMATIC TREATMENTS — SHOW THE EVIDENCE, DON'T RETYPE IT
+═══════════════════════════════════════════════════════
+A film built only from cards on navy feels like a PRESENTATION. A documentary
+SHOWS the real thing — the person, the product, the place. These treatments put a
+REAL, rights-cleared photograph on screen. You do NOT supply an image: you name a
+SUBJECT and the system fetches a free, licence-checked photo automatically. If no
+suitable photo exists, the beat safely becomes a text card — so reach for these
+freely; the film is never worse for trying.
+
+Set Scene Type = "Infographic" for all of these. Fill REMOTION_DATA:
+
+  type=PERSON        -> a named individual enters the story
+    subject=<FULL REAL NAME> | kicker= | caption= | sublabel= | source_publisher=
+    e.g. type=PERSON | subject=Mike Lazaridis | kicker=THE FOUNDER | caption=HE BET THE COMPANY ON THE PLAYBOOK | sublabel=BlackBerry co-CEO - 2011
+
+  type=PRODUCT       -> a product / device / object is the subject
+    subject=<SPECIFIC NAME + YEAR> | kicker= | caption= | sublabel= | source_publisher=
+    e.g. type=PRODUCT | subject=Original iPhone 2007 | caption=THE PHONE WITH NO KEYBOARD
+
+  type=PLACE         -> an HQ, factory, city, courthouse
+    subject=<SPECIFIC PLACE> | caption= | sublabel=
+
+  type=STAT_IMAGE    -> a dominant number burned OVER the subject's photo (stronger than a bare card)
+    subject= | stat=50% | stat_sub=U.S. MARKET - 2009 | caption= | source_publisher=
+
+  type=CONTRAST_IMAGE -> two REAL physical things, side by side (old vs new)
+    left_subject= | right_subject= | left_label= | right_label= | left_caption= | right_caption= | title=
+    e.g. left_subject=BlackBerry Bold 9900 | right_subject=Original iPhone 2007 | left_label=BLACKBERRY | right_label=iPHONE - 2007 | title=THE INTERFACE THAT RESET THE MARKET
+
+  type=PORTRAIT_DUO  -> two people, one governance point (a leadership pair)
+    left_subject= | right_subject= | left_name= | left_role= | right_name= | right_role= | title= | footnote=
+
+  type=PARALLAX      -> a single object with depth motion (a "held" tension beat)
+    subject= | kicker= | caption= | sublabel=
+
+  type=BLACKOUT      -> SILENCE. A held black frame + one line. The cheapest, strongest
+                       cinematic beat - use once, right before the VERDICT_CARD.
+    line=<one sentence> | sublabel=
+
+WARNING - SUBJECT RULE (critical): subject= MUST be a SPECIFIC, SEARCHABLE proper noun -
+   a real person's full name, or a product name WITH a disambiguating year/model.
+   "a smartphone", "the CEO", "their office" fetch the WRONG image. Be exact.
+WARNING - subject= is a SEARCH TERM, not a claim. Every caption/stat you show must still
+   trace to a verified figure (gate 6). The photo illustrates; it never invents data.
+
+═══════════════════════════════════════════════════════
+DIRECTION LOGIC — HOW TO ART EACH BEAT (decide, don't default)
+═══════════════════════════════════════════════════════
+For EVERY beat, first ask what KIND of moment it is, then pick the treatment.
+Never default everything to a data card.
+
+  A single number / stat            -> DATA_CALLOUT or STAT_POSTER - or STAT_IMAGE over the subject's photo
+  Comparing 3-6 magnitudes          -> BAR_CHART
+  2-4 headline figures together     -> KPI_DASHBOARD or DATA_WALL
+  Likelihood x impact (a risk)      -> RISK_MATRIX
+  Coverage / completeness %         -> PROGRESS_GAUGE
+  A trend over time                 -> LINE_GRAPH
+  A chronology of events            -> TIMELINE or BEAT_TIMELINE
+  Designed-vs-actual / before-after -> BEFORE_AFTER_CARD - or CONTRAST_IMAGE if both sides are physical things
+  The decision / causal chain       -> DECISION_CHAIN
+  Where a control was missing       -> CONTROL_GAP or CONTROL_PERIMETER
+  The single strongest quote        -> EVIDENCE_CARD
+  The closing ruling                -> VERDICT_CARD
+  A NAMED PERSON enters             -> PERSON        (subject = full name)
+  A PRODUCT / device / object       -> PRODUCT       (subject = name + year)
+  A PLACE / HQ / factory / city     -> PLACE         (subject = the place)
+  TWO people / a leadership pair    -> PORTRAIT_DUO
+  OLD vs NEW physical things        -> CONTRAST_IMAGE
+  A refusal / a held tension        -> PARALLAX on the object
+  Silence before the verdict        -> BLACKOUT
+
+  RULE OF TEXTURE (enforce across the WHOLE film):
+   - Never more than 2 data-card beats in a row - break the run with a PERSON / PRODUCT
+     / PLACE / image beat. A wall of charts is the "presentation" failure.
+   - When the story has real people, products or places (most do), the film MUST carry
+     AT LEAST 3-5 image treatments. A film with zero photographs will feel like a deck.
+   - Prefer SHOWING the real thing over restating it: if a beat names a person, product or
+     place that exists, a PHOTO of it beats a card with its name typed on it.
+
+═══════════════════════════════════════════════════════
 DIRECTOR QUALITY RULES (enforce on every scene)
 ═══════════════════════════════════════════════════════
 
