@@ -353,7 +353,7 @@ function callClaudeWithCustomSystem(finalPrompt, systemContext, effort, maxToken
 //
 // Uses Gemini's OpenAI-compatible endpoint, so the request shape matches every
 // other OpenAI-style provider. Model overridable via the GEMINI_MODEL property
-// (default gemini-2.0-flash — solidly free; set gemini-2.5-flash for higher quality
+// (default gemini-flash-latest — tracks the current free flash model
 // if your key has it).
 // ══════════════════════════════════════════════════════════════════════════════
 function geminiFallback_(systemText, userPrompt, maxTokens, stageKey) {
@@ -361,7 +361,7 @@ function geminiFallback_(systemText, userPrompt, maxTokens, stageKey) {
   const key   = props.getProperty("GEMINI_API_KEY");
   if (!key) return null;   // no key configured → caller throws its normal error
 
-  const model = props.getProperty("GEMINI_MODEL") || "gemini-2.0-flash";
+  const model = props.getProperty("GEMINI_MODEL") || "gemini-flash-latest";
   const url   = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
 
   const resp = UrlFetchApp.fetch(url, {
