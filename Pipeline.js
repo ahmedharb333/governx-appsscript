@@ -2313,10 +2313,10 @@ function generateVoiceover() {
       audioBlob = response.getBlob().setContentType("audio/mpeg");
       fileName  = idea.id + " — " + idea.company + " — Voiceover.mp3";
     } else {
-      const wav = geminiTtsFallback_(speakNumbers_(voiceover), "stage_7_voiceover");
-      if (!wav) throw new Error("ElevenLabs API error " + code + ": " + response.getContentText() + " (and no GEMINI_API_KEY set for TTS fallback)");
-      audioBlob = wav;
-      fileName  = idea.id + " — " + idea.company + " — Voiceover (Gemini draft).wav";
+      const draft = edgeTtsFallback_(speakNumbers_(voiceover), "stage_7_voiceover");
+      if (!draft) throw new Error("ElevenLabs API error " + code + ": " + response.getContentText() + " (and Edge TTS fallback unavailable — set REMOTION_SERVER_URL and run the Node server + ngrok)");
+      audioBlob = draft;
+      fileName  = idea.id + " — " + idea.company + " — Voiceover (Edge draft).mp3";
     }
     const folder     = getOrCreateContentFolder(idea.id, idea.company);
 
@@ -2492,10 +2492,10 @@ function generateSceneVoiceovers() {
         fileName  = idea.id + "_scene_" + scene.sceneNum + "_voiceover.mp3";
         audioBlob = response.getBlob().setContentType("audio/mpeg").setName(fileName);
       } else {
-        const wav = geminiTtsFallback_(speakNumbers_(scene.voiceoverSync), "stage_7b_scene_" + scene.sceneNum);
-        if (!wav) throw new Error("ElevenLabs API error " + code + ": " + response.getContentText().substring(0, 200) + " (no GEMINI_API_KEY for TTS fallback)");
-        fileName  = idea.id + "_scene_" + scene.sceneNum + "_voiceover.wav";
-        audioBlob = wav.setName(fileName);
+        const draft = edgeTtsFallback_(speakNumbers_(scene.voiceoverSync), "stage_7b_scene_" + scene.sceneNum);
+        if (!draft) throw new Error("ElevenLabs API error " + code + ": " + response.getContentText().substring(0, 200) + " (Edge TTS fallback unavailable — Node server + ngrok running? REMOTION_SERVER_URL set?)");
+        fileName  = idea.id + "_scene_" + scene.sceneNum + "_voiceover.mp3";
+        audioBlob = draft.setName(fileName);
       }
 
       // Delete any existing file with the same name
@@ -2551,6 +2551,34 @@ function generateSceneVoiceovers() {
 // and Remotion can read it. Returns a WAV Blob, or null when no key is set.
 // Voice/model overridable via GEMINI_TTS_VOICE / GEMINI_TTS_MODEL Script Properties.
 // ════════════════════════════════════════════════════════════════════════════════
+// ── Edge TTS fallback — calls the Node server's /tts (free, no key, no quota) ──
+// This is the PRIMARY TTS fallback (Gemini TTS free quota is far too small — ~3/min,
+// ~15/day — to voice a real video). Needs the Node server + ngrok running, and
+// REMOTION_SERVER_URL set (same as Stage 9C). Returns an MP3 Blob, or null if no
+// server URL is configured. Voice overridable via EDGE_TTS_VOICE Script Property.
+function edgeTtsFallback_(text, stageKey) {
+  const base = (typeof getRemotionServerUrl === "function") ? getRemotionServerUrl() : "";
+  if (!base) return null;
+  const props = PropertiesService.getScriptProperties();
+  const resp = UrlFetchApp.fetch(base + "/tts", {
+    method: "post", contentType: "application/json",
+    headers: { "ngrok-skip-browser-warning": "true" },
+    payload: JSON.stringify({ text: String(text || ""), voice: props.getProperty("EDGE_TTS_VOICE") || "" }),
+    muteHttpExceptions: true
+  });
+  const code = resp.getResponseCode();
+  if (code !== 200) throw new Error("Edge TTS server failed " + code + ": " + resp.getContentText().substring(0, 200) +
+    " (is the Node server + ngrok running, and REMOTION_SERVER_URL current?)");
+  const blob = resp.getBlob().setContentType("audio/mpeg");
+  const stamp = new Date().toISOString() + " — " + (stageKey || "tts") + " ran on Edge TTS (DRAFT — re-record on ElevenLabs when funded)";
+  const log = props.getProperty("GEMINI_FALLBACK_LOG") || "";
+  props.setProperty("GEMINI_FALLBACK_LOG", (log + "\n" + stamp).slice(-4000));
+  Logger.log("⚠ [GovernX] ElevenLabs unavailable → Edge TTS fallback for " + (stageKey || "tts") +
+             ". DRAFT voice — re-record on ElevenLabs before publishing.");
+  return blob;
+}
+
+// ── Gemini TTS (kept for reference; NOT used — free quota too small for batches) ──
 function geminiTtsFallback_(text, stageKey) {
   const props = PropertiesService.getScriptProperties();
   const key   = props.getProperty("GEMINI_API_KEY");
