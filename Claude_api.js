@@ -364,28 +364,33 @@ function geminiFallback_(systemText, userPrompt, maxTokens, stageKey) {
   const model = props.getProperty("GEMINI_MODEL") || "gemini-flash-latest";
   const url   = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
 
-  const resp = UrlFetchApp.fetch(url, {
-    method            : "post",
-    contentType       : "application/json",
-    headers           : { "Authorization": "Bearer " + key },
-    payload           : JSON.stringify({
-      model,
-      // Gemini 2.0 Flash caps output at 8192 tokens; every GovernX stage's real
-      // output (a script, a director batch, a metadata block) fits well inside it.
-      max_tokens: Math.min(maxTokens || 8000, 8192),
-      messages  : [
-        { role: "system", content: String(systemText || "") },
-        { role: "user",   content: String(userPrompt  || "") }
-      ]
-    }),
-    muteHttpExceptions: true
+  const payload = JSON.stringify({
+    model,
+    // Flash caps output at 8192 tokens; every GovernX stage's real output
+    // (a script, a director batch, a metadata block) fits well inside it.
+    max_tokens: Math.min(maxTokens || 8000, 8192),
+    messages  : [
+      { role: "system", content: String(systemText || "") },
+      { role: "user",   content: String(userPrompt  || "") }
+    ]
   });
 
-  const code = resp.getResponseCode();
-  const body = resp.getContentText();
-  if (code !== 200) {
+  // The Gemini free tier throws transient 503 ("high demand") / 429 spikes — retry
+  // a few times with backoff so a momentary overload doesn't fail the whole stage.
+  let code = 0, body = "";
+  for (let attempt = 1; attempt <= 4; attempt++) {
+    const resp = UrlFetchApp.fetch(url, {
+      method: "post", contentType: "application/json",
+      headers: { "Authorization": "Bearer " + key },
+      payload: payload, muteHttpExceptions: true
+    });
+    code = resp.getResponseCode();
+    body = resp.getContentText();
+    if (code === 200) break;
+    if ((code === 503 || code === 429) && attempt < 4) { Utilities.sleep(attempt * 5000); continue; }
     throw new Error("Gemini fallback (" + model + ") failed " + code + ": " + body.substring(0, 300));
   }
+  if (code !== 200) throw new Error("Gemini fallback (" + model + ") overloaded after retries — try again shortly.");
 
   const json = JSON.parse(body);
   const text = (json.choices && json.choices[0] && json.choices[0].message &&
