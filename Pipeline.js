@@ -1066,6 +1066,24 @@ DATA_MOMENTS REQUIREMENT (overrides the "minimum 4" default):
   SINGLE_STAT (one dramatic number). Match the type to the shape of the data.
 - Preserve the source's hedges ("potentially", "approximately") and attribution
   in every DATA_MOMENT label, exactly as in the verified evidence.
+
+VISUAL SHOOTABILITY — WRITE BEATS THE CAMERA CAN SHOW (this feeds the Director):
+- The finished video SHOWS real evidence — photographs of the people, products and
+  places the script names — not only cards. So write beats around CONCRETE, SHOWABLE
+  things, and name them explicitly so the Director can put a real image on screen:
+    - Name real PEOPLE by FULL NAME when they act ("Mike Lazaridis", not "the CEO").
+    - Name PRODUCTS / objects specifically, with a year or model ("the 2007 iPhone",
+      "the BlackBerry PlayBook") — not "a device".
+    - Name PLACES when they matter (an HQ, a factory, a city, a courthouse).
+    - Point to DOCUMENTS by name (the SEC filing, the annual report, the settlement order).
+- Anchor an abstract point to a tangible thing. Instead of "the strategy failed to adapt",
+  write "Lazaridis kept betting on the keyboard while rivals shipped glass" — a PERSON and
+  a PRODUCT the camera can show.
+- ONLY name people, products or places that are REAL and appear in the research above.
+  NEVER invent a name to make a beat "shootable". Every figure still traces to a verified claim.
+- Aim for a MIX of textures across the film: some beats about a PERSON, some a PRODUCT, some
+  a PLACE, some a DOCUMENT, some pure DATA. A script that is all abstract statements forces
+  the video to be all cards — and it will feel like a slideshow, not a documentary.
 Primary Angle  : ${master.primaryAngle}
 Discipline     : ${master.discipline}
 Core Insight   : ${master.coreInsight}
